@@ -14,6 +14,8 @@ import darkBlue from "@/darkBlue.js";
 import 'primeicons/primeicons.css'
 import {useUserStore} from "@/Stores/UserStore.js";
 import Logout from "@/components/Logout.vue";
+import ToastService from 'primevue/toastservice';
+import ProjectsView from "@/components/Views/ProjectsView.vue";
 const AuthGuard = (to, from) => {
     return useUserStore().isLoggedIn();
 }
@@ -28,6 +30,7 @@ const routes = [
     { path: '/new_password', component: NewPasswordView, beforeEnter: AuthGuard },
     { path: '/project/:id', component: ProjectView, beforeEnter: AuthGuard, props: true },
     { path: '/logout', component: Logout, beforeEnter: AuthGuard },
+    { path: '/projects', component: ProjectsView, beforeEnter: AuthGuard },
 ]
 
 export const router = createRouter({
@@ -43,4 +46,5 @@ app.use(PrimeVue, {
 });
 app.use(router);
 app.use(pinia);
+app.use(ToastService);
 app.mount('#app');

@@ -2,102 +2,159 @@
 import SimpleMenu from "@/components/SimpleMenu.vue";
 import { ref } from 'vue';
 import { useRouter } from "vue-router";
-import {useUserStore} from "@/Stores/UserStore.js";
+import { useUserStore } from "@/Stores/UserStore.js";
+
+// PrimeVue Imports
+import InputText from 'primevue/inputtext';
+import Password from 'primevue/password';
+import Button from 'primevue/button';
+import Card from 'primevue/card';
+import Message from 'primevue/message';
+import FloatLabel from 'primevue/floatlabel';
+
 const router = useRouter();
 const login = ref('');
 const password = ref('');
 const errorMessage = ref('');
+const loading = ref(false); // Added for button loading state
+
 function handleLogin() {
-  if (login.value === 'admin' && password.value === 'admin') {
-    errorMessage.value = '';
-    useUserStore().testEntry();
-    router.push('/home');
-  } else {
-    errorMessage.value = 'Invalid email or password';
-    useUserStore().logout();
-  }
+  loading.value = true;
+  errorMessage.value = '';
+
+  // Simulate a small network delay for better UX feel
+  setTimeout(() => {
+    if (login.value === 'admin' && password.value === 'admin') {
+      useUserStore().testEntry();
+      router.push('/home');
+    } else {
+      errorMessage.value = 'Invalid username or password';
+      useUserStore().logout();
+      loading.value = false;
+    }
+  }, 500);
 }
 </script>
 
 <template>
-  <SimpleMenu />
-  <div class="login-container">
-    <h2>Login</h2>
-    <form @submit.prevent="handleLogin" class="login-form">
-      <div class="form-group">
-        <label for="login">Username:</label>
-        <input
-            type="text"
-            id="login"
-            v-model="login"
-            placeholder="Enter your username"
-            required
-        />
-      </div>
+  <div class="layout-wrapper">
+    <SimpleMenu />
 
-      <div class="form-group">
-        <label for="password">Password:</label>
-        <input
-            type="password"
-            id="password"
-            v-model="password"
-            placeholder="Enter your password"
-            required
-        />
-      </div>
+    <div class="login-body">
+      <Card class="login-card">
+        <template #title>
+          <div class="header-text">Welcome Back</div>
+        </template>
+        <template #subtitle>
+          <div class="sub-text">Please sign in to continue</div>
+        </template>
 
-      <button type="submit">Login</button>
-    </form>
-    <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
+        <template #content>
+          <form @submit.prevent="handleLogin" class="form-content">
+
+            <div class="field">
+              <FloatLabel>
+                <InputText id="username" v-model="login" class="w-full" />
+                <label for="username">Username</label>
+              </FloatLabel>
+            </div>
+
+            <div class="field">
+              <FloatLabel>
+                <Password
+                    id="password"
+                    v-model="password"
+                    :feedback="false"
+                    toggleMask
+                    class="w-full"
+                    inputClass="w-full"
+                />
+                <label for="password">Password</label>
+              </FloatLabel>
+            </div>
+
+            <transition name="fade">
+              <Message v-if="errorMessage" severity="error" :closable="false" class="mb-3">
+                {{ errorMessage }}
+              </Message>
+            </transition>
+
+            <Button
+                type="submit"
+                label="Login"
+                icon="pi pi-sign-in"
+                :loading="loading"
+                class="w-full"
+            />
+          </form>
+        </template>
+      </Card>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.login-container {
+/* Main Layout wrapper to handle background and positioning */
+.layout-wrapper {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--surface-ground); /* Uses PrimeVue theme color */
+}
+
+/* Center the login card vertically and horizontally */
+.login-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.login-card {
+  width: 100%;
   max-width: 400px;
-  margin: 2rem auto;
-  padding: 2rem;
-  border: 1px solid #ccc;
-  border-radius: 12px;
-  background-color: #03023a;
+  /* Adds a subtle shadow provided by PrimeVue styles, or you can add custom: */
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+.header-text {
   text-align: center;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--text-color);
 }
 
-.login-form {
+.sub-text {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  color: var(--text-color-secondary);
+}
+
+.form-content {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 2rem; /* Spacing between inputs */
+  padding-top: 1rem;
 }
 
-.form-group {
-  display: flex;
-  flex-direction: column;
-  text-align: left;
+.field {
+  width: 100%;
 }
 
-input {
-  padding: 0.5rem;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  margin-top: 0.25rem;
+/* Helper to ensure inputs take full width */
+.w-full {
+  width: 100%;
 }
 
-button {
-  padding: 0.75rem;
-  border: none;
-  border-radius: 8px;
-  background-color: #4caf50;
-  color: white;
-  cursor: pointer;
-  font-weight: bold;
+/* Simple fade transition for the error message */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
 }
 
-button:hover {
-  background-color: #45a049;
-}
-
-.error {
-  color: red;
-  margin-top: 1rem;
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
