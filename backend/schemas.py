@@ -1,23 +1,32 @@
 from pydantic import BaseModel
-from typing import Literal, List, Any, Optional
+from typing import Optional, List, Any
 
-# Konfiguracja połączenia, którą wysyła użytkownik
-class DBConfig(BaseModel):
-    type: Literal["postgresql", "mysql"]
-    host: str
-    port: int
-    user: str
-    password: str
-    db_name: str
+# --- NewProjectView.vue ---
+class ProjectCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    dbType: str  # np. 'postgres'
+    dbHost: str
+    dbPort: int
+    dbName: str
+    dbUser: str
+    dbPassword: str
 
-# To, co przychodzi w zapytaniu POST
-class QueryRequest(BaseModel):
-    db_config: DBConfig
+class ProjectResponse(ProjectCreate):
+    id: int
+    status: str
+    
+    class Config:
+        from_attributes = True
+
+# --- ProjectView.vue (Czat) ---
+class AskRequest(BaseModel):
     question: str
 
-# To, co odsyłamy do frontendu
-class QueryResponse(BaseModel):
-    question: str
-    generated_sql: str
-    result: List[dict]
-    error: Optional[str] = None
+class RunSQLRequest(BaseModel):
+    sql: str
+
+class QueryResult(BaseModel):
+    columns: List[str]
+    data: List[dict]
+    generated_sql: Optional[str] = None

@@ -15,8 +15,7 @@ uvicorn==0.38.0
 fastapi
 uvicorn
 sqlalchemy
-pydantic
 ollama
 psycopg2-binary   # do PostgreSQL
 pymysql           # do MySQL
-cryptography      # wymagane przez pymysql w niektórych wersjach    
+cryptography      # wymagane przez pymysql w niektórych wersjach  
