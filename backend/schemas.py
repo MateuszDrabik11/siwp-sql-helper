@@ -30,3 +30,11 @@ class QueryResult(BaseModel):
     columns: List[str]
     data: List[dict]
     generated_sql: Optional[str] = None
+
+class ConnectionConfig(BaseModel):
+    host: str
+    port: int
+    type: str
+    username: str
+    password: str
+    database: str

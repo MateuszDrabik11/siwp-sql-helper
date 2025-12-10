@@ -2,7 +2,7 @@
 import ExtendedMenu from "@/components/ExtendedMenu.vue";
 import { Button } from "primevue";
 import Drawer from 'primevue/drawer';
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
 import ProjectItem from "@/components/ProjectItem.vue";
 import { useUserStore } from "@/Stores/UserStore.js";
 
@@ -20,11 +20,29 @@ const user = userStore.getUser || { username: 'Guest' };
 
 let visible = ref(false);
 let projects = ref([
-  { id: 1, name: "Website Redesign" },
-  { id: 2, name: "Mobile App API" },
-  { id: 3, name: "Internal Tools" },
-  { id: 4, name: "Marketing Campaign" }
 ]);
+const getProjects = async () => {
+  try {
+    // Replace with your actual backend endpoint
+    const response = await fetch('/api/projects');
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    // 3. Update the reactive variable with the result
+    const data = await response.json();
+    projects.value = data;
+
+  } catch (error) {
+    console.error('Failed to fetch projects:', error);
+  }
+};
+
+// 4. Trigger the fetch when the component mounts
+onMounted(() => {
+  getProjects();
+});
 </script>
 
 <template>

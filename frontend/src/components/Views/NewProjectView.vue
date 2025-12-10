@@ -9,6 +9,7 @@ import Steps from 'primevue/steps';
 import InputText from 'primevue/inputtext';
 import Textarea from 'primevue/textarea';
 import Dropdown from 'primevue/dropdown';
+import Toast from 'primevue/toast';
 import Password from 'primevue/password';
 import Button from 'primevue/button';
 import InputNumber from 'primevue/inputnumber';
@@ -81,11 +82,46 @@ const prevStep = () => {
 // 5. Test Connection (Optional feature)
 const testConnection = async () => {
   isLoading.value = true;
-  // Simulate API ping
-  setTimeout(() => {
-    isLoading.value = false;
-    toast.add({ severity: 'success', summary: 'Connected', detail: 'Database connection successful!', life: 3000 });
-  }, 1000);
+
+  try {
+    // 1. Method is now POST
+    // 2. We add headers to tell the server we are sending JSON
+    // 3. We use JSON.stringify() to send the body data
+    const response = await fetch('/api/projects/test-connection', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        host: form.dbHost,      // Replace these strings with your actual
+        port: form.dbPort,             // reactive variables, e.g., form.value.host
+        type: form.dbType.code,
+        username: form.dbUser,
+        password: form.dbPassword,
+        database: form.dbName
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    // Success logic goes INSIDE the try block
+    setTimeout(() => {
+      isLoading.value = false;
+      toast.add({ severity: 'success', summary: 'Connected', detail: 'Database connection successful!', life: 3000 });
+    }, 1000);
+
+  } catch (error) {
+    // Error logic goes here
+    console.error('Failed to connect to database:', error);
+
+    setTimeout(() => {
+      isLoading.value = false;
+      toast.add({ severity: 'error', summary: 'Cannot connect', detail: 'Cannot connect to database!', life: 3000 });
+    }, 1000);
+  }
 };
 
 // 6. Submit Logic
@@ -99,17 +135,44 @@ const handleSubmit = async () => {
   };
 
   console.log("Submitting:", payload);
+  try {
+    // 1. Method is now POST
+    // 2. We add headers to tell the server we are sending JSON
+    // 3. We use JSON.stringify() to send the body data
+    const response = await fetch('/api/projects', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
 
-  // Simulate API Call
-  setTimeout(() => {
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    // Success logic goes INSIDE the try block
+    setTimeout(() => {
     isLoading.value = false;
     toast.add({ severity: 'success', summary: 'Created', detail: 'Project created successfully', life: 3000 });
     router.push('/projects'); // Redirect to list
   }, 1500);
+
+  } catch (error) {
+    // Error logic goes here
+    console.error('Failed to connect to database:', error);
+
+    setTimeout(() => {
+      isLoading.value = false;
+      toast.add({ severity: 'error', summary: 'Cannot create', detail: "Project cannot be created", life: 3000 });
+    }, 1000);
+  }
 };
 </script>
 
 <template>
+  <Toast />
   <ExtendedMenu/>
   <div class="page-container">
     <Card class="project-card">

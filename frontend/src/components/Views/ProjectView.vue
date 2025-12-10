@@ -1,123 +1,156 @@
 <script setup>
 import ExtendedMenu from "@/components/ExtendedMenu.vue";
-import { ref, onMounted } from "vue";
+import { ref, onMounted, nextTick } from "vue";
 import Tree from 'primevue/tree';
-import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
 import ScrollPanel from 'primevue/scrollpanel';
 import Tag from 'primevue/tag';
 import Textarea from 'primevue/textarea';
+import DataTable from 'primevue/datatable';
+import Column from 'primevue/column';
+import Message from 'primevue/message';
+import Toast from 'primevue/toast';
+import Avatar from 'primevue/avatar';
+import Skeleton from 'primevue/skeleton';
+import { useToast } from 'primevue/usetoast';
 
-const props = defineProps({
-  id: [Number, String],
-});
-
-// --- Mock Data: Database Schema ---
-// PrimeVue Tree requires specific structure: key, label, icon, children
-const schemaNodes = ref([
-  {
-    key: '0',
-    label: 'public',
-    icon: 'pi pi-database',
-    children: [
-      {
-        key: '0-0',
-        label: 'users',
-        icon: 'pi pi-table',
-        children: [
-          { key: '0-0-0', label: 'id (int8)', icon: 'pi pi-key', selectable: false },
-          { key: '0-0-1', label: 'email (varchar)', icon: 'pi pi-hashtag', selectable: false },
-          { key: '0-0-2', label: 'signup_date (timestamp)', icon: 'pi pi-calendar', selectable: false },
-          { key: '0-0-3', label: 'status (varchar)', icon: 'pi pi-tag', selectable: false },
-        ]
-      },
-      {
-        key: '0-1',
-        label: 'orders',
-        icon: 'pi pi-table',
-        children: [
-          { key: '0-1-0', label: 'id (int8)', icon: 'pi pi-key', selectable: false },
-          { key: '0-1-1', label: 'user_id (int8)', icon: 'pi pi-link', selectable: false },
-          { key: '0-1-2', label: 'total_amount (numeric)', icon: 'pi pi-dollar', selectable: false },
-        ]
-      }
-    ]
-  }
-]);
-
-// --- Mock Data: Chat History ---
-const chatHistory = ref([
-  {
-    id: 1,
-    role: 'user',
-    content: 'Show me the top 5 users who spent the most money last month.',
-    timestamp: '10:05 AM'
-  },
-  {
-    id: 2,
-    role: 'assistant',
-    content: 'Here is the query to fetch top spenders based on the `orders` table.',
-    sql: `SELECT u.email, SUM(o.total_amount) as total_spent
-FROM users u
-JOIN orders o ON u.id = o.user_id
-WHERE o.created_at >= NOW() - INTERVAL '1 month'
-GROUP BY u.email
-ORDER BY total_spent DESC
-LIMIT 5;`,
-    timestamp: '10:05 AM'
-  },
-  {
-    id: 3,
-    role: 'user',
-    content: 'Can you filter that for only active users?',
-    timestamp: '10:06 AM'
-  }
-]);
-
+const toast = useToast();
+const props = defineProps({ id: [Number, String] });
+const db_type = ref('')
+// --- Logic ---
+const schemaNodes = ref([]);
+const expandedKeys = ref({});
+const chatHistory = ref([]);
 const userQuery = ref('');
 const loading = ref(false);
+const db_maps = (db) => {
+  if (db === "postgres" || db === "postgresql") {
+    return "PostgreSQL"
+  } else if (db === "mysql") {
+    return "MySQL"
+  }
+  else {
+    return "SQL"
+  }
+}
+const getSchema = async () => {
+  try {
+    const response = await fetch(`/api/projects/${props.id}/schema`);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const values = await response.json();
+    schemaNodes.value = values.schema
+    db_type.value = values.database_type;
+    expandedKeys.value = { ...expandedKeys.value, '0': true };
+  } catch (error) {
+    console.error('Failed to fetch schema:', error);
+  }
+};
 
-const sendMessage = () => {
-  if (!userQuery.value.trim()) return;
+onMounted(() => getSchema());
 
-  // Add user message
+const sendMessage = async () => {
+  const text = userQuery.value.trim();
+  if (!text) return;
+
   chatHistory.value.push({
     id: Date.now(),
     role: 'user',
-    content: userQuery.value,
+    content: text,
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   });
 
-  loading.value = true;
-  const tempQuery = userQuery.value;
   userQuery.value = '';
+  loading.value = true;
+  scrollToBottom();
 
-  // Simulate AI Response delay
-  setTimeout(() => {
+  try {
+    const response = await fetch(`/api/projects/${props.id}/ask`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ question: text })
+    });
+
+    if (!response.ok) throw new Error(`Server error: ${response.status}`);
+    const data = await response.json();
+
     chatHistory.value.push({
       id: Date.now() + 1,
       role: 'assistant',
-      content: `I've updated the query to filter by status='active'.`,
-      sql: `SELECT u.email, SUM(o.total_amount) as total_spent
-FROM users u
-JOIN orders o ON u.id = o.user_id
-WHERE o.created_at >= NOW() - INTERVAL '1 month'
-  AND u.status = 'active' -- Added filter
-GROUP BY u.email
-ORDER BY total_spent DESC
-LIMIT 5;`,
+      content: data.sql ? "Here is the SQL query generated based on your request:" : "I couldn't generate SQL.",
+      sql: data.sql || null,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      results: null, isRunning: false, runError: null, columns: []
+    });
+
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to get AI response.', life: 3000 });
+    // Push error message to chat for visibility
+    chatHistory.value.push({
+      id: Date.now() + 1,
+      role: 'assistant',
+      content: "Sorry, I encountered an error processing your request.",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     });
+  } finally {
     loading.value = false;
-    // Scroll to bottom logic would go here
-  }, 1000);
+    scrollToBottom();
+  }
 };
 
-// Expand all tree nodes by default
-const expandedKeys = ref({ '0': true, '0-0': true, '0-1': true });
+const runQuery = async (message) => {
+  if (!message.sql) return;
+  message.isRunning = true;
+  message.runError = null;
+  message.results = null;
+  message.columns = [];
+
+  try {
+    const response = await fetch(`/api/projects/${props.id}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql: message.sql })
+    });
+
+    if (!response.ok) {
+       const errData = await response.json().catch(() => ({}));
+       throw new Error(errData.detail || `Execution failed: ${response.status}`);
+    }
+
+    const jsonResponse = await response.json();
+    message.results = jsonResponse.data;
+    message.columns = jsonResponse.columns;
+
+    if (message.results.length === 0) {
+      toast.add({ severity: 'info', summary: 'Executed', detail: 'Query returned 0 rows.', life: 3000 });
+    } else {
+      toast.add({ severity: 'success', summary: 'Success', detail: 'Query executed successfully!', life: 3000 });
+    }
+
+    await nextTick();
+    scrollToBottom();
+
+  } catch (error) {
+    message.runError = error.message;
+  } finally {
+    message.isRunning = false;
+  }
+};
+
+// Simple copy to clipboard function
+const copySQL = (sql) => {
+  navigator.clipboard.writeText(sql);
+  toast.add({ severity: 'success', summary: 'Copied', detail: 'SQL copied to clipboard', life: 2000 });
+};
+
+const scrollToBottom = async () => {
+  await nextTick();
+  const container = document.querySelector('.p-scrollpanel-content');
+  if (container) container.scrollTop = container.scrollHeight;
+};
 </script>
 
 <template>
+  <Toast />
   <div class="layout-wrapper">
     <ExtendedMenu class="fixed-header"/>
 
@@ -125,21 +158,24 @@ const expandedKeys = ref({ '0': true, '0-0': true, '0-1': true });
 
       <aside class="schema-panel">
         <div class="panel-header">
-          <span class="font-bold text-lg">Schema</span>
-          <Tag value="PostgreSQL" severity="info"></Tag>
+          <div class="flex align-items-center gap-2">
+            <i class="pi pi-database text-primary text-xl"></i>
+            <span class="font-bold text-lg">Explorer</span>
+          </div>
+          <Tag :value="db_maps(db_type)" severity="info"></Tag>
         </div>
-        <div class="search-box">
-          <span class="p-input-icon-left w-full">
-            <i class="pi pi-search" />
-            <InputText placeholder="Search tables..." class="w-full p-inputtext-sm" />
-          </span>
-        </div>
+
         <div class="tree-wrapper custom-scrollbar">
+          <div v-if="schemaNodes.length === 0" class="p-4">
+             <Skeleton width="100%" height="2rem" class="mb-2"></Skeleton>
+             <Skeleton width="80%" height="2rem" class="mb-2"></Skeleton>
+          </div>
           <Tree
-              :value="schemaNodes"
-              v-model:expandedKeys="expandedKeys"
-              class="w-full border-none bg-transparent"
-              selectionMode="single"
+            v-else
+            :value="schemaNodes"
+            v-model:expandedKeys="expandedKeys"
+            class="w-full border-none bg-transparent p-0"
+            selectionMode="single"
           >
             <template #default="slotProps">
               <span class="text-sm">{{ slotProps.node.label }}</span>
@@ -149,94 +185,140 @@ const expandedKeys = ref({ '0': true, '0-0': true, '0-1': true });
       </aside>
 
       <main class="chat-panel">
-
         <ScrollPanel class="messages-area custom-scrollbar">
           <div class="messages-container">
-            <div v-for="msg in chatHistory" :key="msg.id" class="message-row" :class="msg.role">
+            <div v-for="msg in chatHistory" :key="msg.id" class="message-row fade-in" :class="msg.role">
 
-              <div class="avatar-col">
-                <div v-if="msg.role === 'assistant'" class="ai-avatar">
-                  <i class="pi pi-bolt"></i>
-                </div>
-                <div v-else class="user-avatar">
-                  <i class="pi pi-user"></i>
+              <div class="message-content-wrapper">
+
+                <Avatar
+                  :icon="msg.role === 'assistant' ? 'pi pi-bolt' : 'pi pi-user'"
+                  class="flex-shrink-0"
+                  :class="msg.role === 'assistant' ? 'ai-avatar' : 'user-avatar'"
+                  shape="circle"
+                />
+
+                <div class="bubble-container">
+                  <div class="bubble-header">
+                    <span class="font-bold text-sm">{{ msg.role === 'assistant' ? 'SQL Helper' : 'You' }}</span>
+                    <span class="text-xs text-500" style="margin-left: 0.75rem;">{{ msg.timestamp }}</span>
+                  </div>
+
+                  <div class="bubble-body">
+                    {{ msg.content }}
+                  </div>
+
+                  <div v-if="msg.sql" class="sql-card mt-3">
+                    <div class="sql-header">
+                      <div class="flex align-items-center gap-2">
+                        <span class="text-primary font-bold">&lt; &gt;</span>
+                        <span class="text-xs font-bold text-500">GENERATED SQL</span>
+                      </div>
+                      <Button
+                        icon="pi pi-copy"
+                        text rounded
+                        size="small"
+                        class="p-0 w-2rem h-2rem text-500"
+                        @click="copySQL(msg.sql)"
+                      />
+                    </div>
+                    <div class="sql-code-bg">
+                      <pre><code>{{ msg.sql }}</code></pre>
+                    </div>
+                    <div class="sql-footer">
+                       <Button
+                          label="Run Query"
+                          icon="pi pi-play"
+                          size="small"
+                          severity="success"
+                          :loading="msg.isRunning"
+                          @click="runQuery(msg)"
+                          outlined
+                        />
+                    </div>
+                  </div>
+
+                  <Message v-if="msg.runError" severity="error" class="mt-2 text-xs" :closable="false">
+                    {{ msg.runError }}
+                  </Message>
+
+                  <div v-if="msg.columns && msg.columns.length > 0" class="results-wrapper mt-3">
+                     <div class="flex align-items-center mb-2">
+                        <span class="text-lg font-bold">Results ({{ msg.results ? msg.results.length : 0 }})</span>
+                     </div>
+                     <DataTable
+                        :value="msg.results"
+                        size="small"
+                        stripedRows
+                        paginator :rows="5"
+                        class="p-datatable-sm text-sm border-1 surface-border border-round overflow-hidden"
+                        tableStyle="min-width: 100%"
+                        scrollable
+                      >
+                        <Column v-for="col in msg.columns" :key="col" :field="col" :header="col" sortable></Column>
+                      </DataTable>
+                  </div>
                 </div>
               </div>
-
-              <div class="content-col">
-                <div class="meta">
-                  <span class="role-name">{{ msg.role === 'assistant' ? 'SQL Helper' : 'You' }}</span>
-                  <span class="timestamp">{{ msg.timestamp }}</span>
-                </div>
-
-                <div class="text-content">
-                  {{ msg.content }}
-                </div>
-
-                <div v-if="msg.sql" class="code-block">
-                  <div class="code-header">
-                    <span>SQL</span>
-                    <Button icon="pi pi-copy" text size="small" aria-label="Copy" />
-                  </div>
-                  <pre><code>{{ msg.sql }}</code></pre>
-                  <div class="code-actions">
-                    <Button label="Run Query" icon="pi pi-play" size="small" severity="success" outlined />
-                  </div>
-                </div>
-              </div>
-
             </div>
 
-            <div v-if="loading" class="message-row assistant">
-              <div class="avatar-col"><div class="ai-avatar"><i class="pi pi-spin pi-spinner"></i></div></div>
-              <div class="content-col"><span class="text-content italic">Generating SQL...</span></div>
+            <div v-if="loading" class="message-row assistant fade-in">
+               <div class="message-content-wrapper">
+                 <Avatar icon="pi pi-spin pi-spinner" class="ai-avatar flex-shrink-0" shape="circle" />
+                 <div class="bubble-container">
+                   <div class="bubble-body text-500 text-sm flex align-items-center gap-2">
+                     Generating SQL...
+                   </div>
+                 </div>
+               </div>
             </div>
           </div>
         </ScrollPanel>
 
-        <div class="input-area">
-          <div class="input-wrapper">
+        <div class="input-area-wrapper">
+          <div class="input-island">
              <Textarea
-                 v-model="userQuery"
-                 rows="1"
-                 autoResize
-                 placeholder="Ask a question about your data..."
-                 class="chat-input"
-                 @keydown.enter.prevent="sendMessage"
-             />
-            <Button icon="pi pi-send" @click="sendMessage" :disabled="loading" rounded />
+                v-model="userQuery"
+                rows="1"
+                autoResize
+                placeholder="Ask your data a question..."
+                class="chat-input text-base"
+                @keydown.enter.prevent="sendMessage"
+              />
+             <Button
+                icon="pi pi-send"
+                text rounded
+                @click="sendMessage"
+                :disabled="loading || !userQuery.trim()"
+                class="send-btn"
+              />
           </div>
-          <div class="disclaimer">AI can make mistakes. Please verify generated SQL.</div>
         </div>
 
       </main>
-
     </div>
   </div>
 </template>
 
 <style scoped>
+/* --- Layout --- */
 .layout-wrapper {
   display: flex;
   flex-direction: column;
   height: 100vh;
   background-color: var(--surface-ground);
-}
-
-.fixed-header {
-  flex-shrink: 0;
-  z-index: 100;
+  color: var(--text-color);
 }
 
 .workspace-container {
   display: flex;
   flex: 1;
-  overflow: hidden; /* Important for scroll panels */
+  overflow: hidden;
 }
 
 /* --- Schema Sidebar --- */
 .schema-panel {
-  width: 300px;
+  width: 280px;
   background-color: var(--surface-card);
   border-right: 1px solid var(--surface-border);
   display: flex;
@@ -244,15 +326,11 @@ const expandedKeys = ref({ '0': true, '0-0': true, '0-1': true });
 }
 
 .panel-header {
-  padding: 1rem;
+  padding: 1.25rem 1rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid var(--surface-border);
-}
-
-.search-box {
-  padding: 0.5rem 1rem;
 }
 
 .tree-wrapper {
@@ -261,170 +339,174 @@ const expandedKeys = ref({ '0': true, '0-0': true, '0-1': true });
   padding: 0.5rem;
 }
 
-/* --- Chat Panel --- */
+/* --- Chat Area --- */
 .chat-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background-color: var(--surface-ground);
   position: relative;
 }
 
 .messages-area {
   flex: 1;
-  padding: 1rem;
+  padding: 2rem 1rem;
 }
 
 .messages-container {
   max-width: 900px;
   margin: 0 auto;
-  padding-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem; /* Increased spacing between messages */
 }
 
 .message-row {
   display: flex;
+  width: 100%;
+}
+
+.message-content-wrapper {
+  display: flex;
   gap: 1rem;
-  margin-bottom: 2rem;
-  animation: fadeIn 0.3s ease;
+  max-width: 90%;
 }
 
-.avatar-col {
-  flex-shrink: 0;
+/* User Alignment: Right */
+.message-row.user {
+  justify-content: flex-end;
+}
+.message-row.user .message-content-wrapper {
+  flex-direction: row-reverse;
 }
 
-.ai-avatar, .user-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
+/* Avatar Styling */
 .ai-avatar {
-  background-color: var(--primary-color);
-  color: white;
+    background-color: transparent !important;
+    color: var(--text-color) !important;
 }
-
 .user-avatar {
-  background-color: var(--surface-400);
-  color: white;
+    background-color: transparent !important;
+    color: var(--text-color) !important;
 }
 
-.content-col {
-  flex: 1;
-  min-width: 0; /* Prevents code block overflow */
+/* Bubble Styling - Minimalist (No background for text bubbles per screenshot) */
+.bubble-container {
+  min-width: 200px;
+  max-width: 100%;
+  background: #393851;
+  padding: 12px;
+  border-radius: 20px;
 }
 
-.meta {
-  margin-bottom: 0.25rem;
+.bubble-header {
+  margin-bottom: 0.5rem;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
 }
 
-.role-name {
-  font-weight: 700;
-  font-size: 0.9rem;
+/* Align user header to right */
+.message-row.user .bubble-header {
+  justify-content: flex-end; /* Puts name/time on right side */
+  flex-direction: row-reverse; /* Puts name after time if needed, or keep standard */
+}
+/* IMPORTANT: Fix logic for user header alignment to match screenshot 'You 00:00' */
+.message-row.user .bubble-header span:last-child {
+    margin-left: 0;
+    margin-right: 0.75rem; /* Margin for timestamp when reversed */
 }
 
-.timestamp {
-  font-size: 0.8rem;
-  color: var(--text-color-secondary);
-}
-
-.text-content {
+.bubble-body {
   line-height: 1.6;
-  color: var(--text-color);
+  font-size: 1rem;
+  white-space: pre-wrap;
 }
 
-/* --- SQL Code Block Styling --- */
-.code-block {
-  margin-top: 1rem;
-  background-color: #1e1e1e; /* Dark theme for code */
-  border-radius: 6px;
-  overflow: hidden;
+/* Align user text to right */
+.message-row.user .bubble-body {
+    text-align: right;
+}
+
+/* --- SQL Card --- */
+.sql-card {
   border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #202023;
+  margin-top: 1rem;
+  text-align: left; /* Ensure code block is always left aligned */
 }
 
-.code-header {
-  background-color: #2d2d2d;
-  color: #ccc;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.8rem;
+.sql-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--surface-border);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background-color: #030215
 }
 
-pre {
-  margin: 0;
-  padding: 1rem;
+.sql-code-bg {
+  background: #18181b; /* Deep dark for code contrast */
+  padding: 1.25rem;
   overflow-x: auto;
-  color: #d4d4d4; /* VSCode light grey */
+}
+
+.sql-code-bg pre {
+  margin: 0;
+  color: #e4e4e7;
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 0.9rem;
 }
 
-.code-actions {
-  padding: 0.5rem;
-  background-color: #252526;
-  border-top: 1px solid #333;
+.sql-footer {
+  padding: 1rem;
+  background: var(--surface-ground); /* Slightly lighter/darker than card */
 }
 
-/* --- Input Area --- */
-.input-area {
-  padding: 1.5rem;
-  background-color: var(--surface-ground);
-  border-top: 1px solid var(--surface-border);
+/* --- Input Island --- */
+.input-area-wrapper {
+  padding: 1em;
 }
 
-.input-wrapper {
+.input-island {
   max-width: 900px;
   margin: 0 auto;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
   display: flex;
-  gap: 0.5rem;
-  background: var(--surface-card);
-  padding: 0.5rem;
-  border-radius: 12px;
+  align-items: center;
   border: 1px solid var(--surface-border);
-  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+  border-radius: 20px;
+  background: #393851;
 }
 
 .chat-input {
   flex: 1;
-  border: none;
+  border: none !important;
+  box-shadow: none !important;
   background: transparent;
-  padding: 0.5rem;
-  outline: none;
-  resize: none;
-  max-height: 100px;
+  padding: 0.75rem 0;
 }
 
-.chat-input:focus {
-  box-shadow: none;
-}
-
-.disclaimer {
-  text-align: center;
-  font-size: 0.75rem;
+.send-btn {
   color: var(--text-color-secondary);
-  margin-top: 0.5rem;
 }
 
-/* Animations */
+/* Animation */
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(5px); }
+  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Custom Scrollbar */
+/* Scrollbar */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--surface-400);
+  background-color: var(--surface-600);
   border-radius: 3px;
 }
 </style>

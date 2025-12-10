@@ -1,18 +1,18 @@
 from sqlalchemy import create_engine, text, inspect
-import ollama
-# ZMIANA 1: Importujemy ProjectCreate zamiast nieistniejącego DBConfig
-from schemas import ProjectCreate 
 
-# ZMIANA 2: Zmieniamy nazwę funkcji na create_temp_engine (bo tak ją wołasz w main.py)
-# i używamy pól z ProjectCreate (np. config.dbUser zamiast config.user)
-def create_temp_engine(config: ProjectCreate):
+from schemas import ConnectionConfig
+from client import Client
+
+from config import Settings
+
+def create_temp_engine(config: ConnectionConfig):
     """Tworzy silnik SQLAlchemy na podstawie konfiguracji z formularza (test połączenia)."""
     url = ""
     # Frontend wysyła kod bazy (np. 'postgres'), musimy to obsłużyć
-    if config.dbType == "postgres" or config.dbType == "postgresql":
-        url = f"postgresql://{config.dbUser}:{config.dbPassword}@{config.dbHost}:{config.dbPort}/{config.dbName}"
-    elif config.dbType == "mysql":
-        url = f"mysql+pymysql://{config.dbUser}:{config.dbPassword}@{config.dbHost}:{config.dbPort}/{config.dbName}"
+    if config.type == "postgres" or config.type == "postgresql":
+        url = f"postgresql://{config.username}:{config.password}@{config.host}:{config.port}/{config.database}"
+    elif config.type == "mysql":
+        url = f"mysql+pymysql://{config.username}:{config.password}@{config.host}:{config.port}/{config.database}"
     
     # pool_pre_ping sprawdza czy połączenie żyje przed jego użyciem
     return create_engine(url, pool_pre_ping=True)
@@ -30,7 +30,7 @@ def get_db_schema(engine) -> str:
         
     return "\n".join(schema_info)
 
-def generate_sql_with_ollama(question: str, schema: str, db_type: str) -> str:
+def generate_sql_with_ollama(client: Client, question: str, schema: str, db_type: str) -> str:
     """Wysyła prompt do Ollamy i zwraca czysty SQL."""
     
     system_prompt = f"""
@@ -46,9 +46,9 @@ def generate_sql_with_ollama(question: str, schema: str, db_type: str) -> str:
     3. Nie dodawaj wyjaśnień.
     4. Używaj tylko tabel i kolumn podanych w schemacie.
     """
-    
+    settings = Settings()
     # Pamiętaj, żeby mieć uruchomione 'ollama serve' w tle
-    response = ollama.chat(model='llama3', messages=[ 
+    response = client.chat(messages=[
         {'role': 'system', 'content': system_prompt},
         {'role': 'user', 'content': question},
     ])

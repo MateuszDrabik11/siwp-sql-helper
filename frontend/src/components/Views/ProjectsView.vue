@@ -24,48 +24,27 @@ const statusOptions = [
 ];
 
 // 1. Mock Data
+const getProjects = async () => {
+  try {
+    // Replace with your actual backend endpoint
+    const response = await fetch('/api/projects');
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    // 3. Update the reactive variable with the result
+    const data = await response.json();
+    projects.value = data;
+
+  } catch (error) {
+    console.error('Failed to fetch projects:', error);
+  }
+};
+
+// 4. Trigger the fetch when the component mounts
 onMounted(() => {
-  setTimeout(() => {
-    projects.value = [
-      {
-        id: 1,
-        name: 'Marketing Analytics',
-        description: 'Q4 Performance tracking for social media campaigns.',
-        dbType: 'postgres',
-        host: 'db-prod-01',
-        status: 'active',
-        lastAccessed: '2 hours ago'
-      },
-      {
-        id: 2,
-        name: 'User Inventory',
-        description: 'Main warehouse database sync.',
-        dbType: 'mysql',
-        host: '192.168.1.50',
-        status: 'active',
-        lastAccessed: '1 day ago'
-      },
-      {
-        id: 3,
-        name: 'Legacy Logs',
-        description: 'Archived logs from 2022.',
-        dbType: 'mongo',
-        host: 'mongo-cluster-x',
-        status: 'offline',
-        lastAccessed: '3 months ago'
-      },
-      {
-        id: 4,
-        name: 'HR Portal Data',
-        description: 'Employee records and payroll sync.',
-        dbType: 'mssql',
-        host: 'corp-sql-09',
-        status: 'maintenance',
-        lastAccessed: '5 mins ago'
-      }
-    ];
-    isLoading.value = false;
-  }, 800);
+  getProjects();
 });
 
 // 2. Filter Logic

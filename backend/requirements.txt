@@ -16,6 +16,7 @@ fastapi
 uvicorn
 sqlalchemy
 ollama
-psycopg2-binary   # do PostgreSQL
-pymysql           # do MySQL
-cryptography      # wymagane przez pymysql w niektórych wersjach  
+psycopg2-binary
+pymysql
+cryptography
+python-dotenv
