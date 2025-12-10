@@ -1,13 +1,186 @@
-from fastapi import FastAPI
+import base64
 
+from fastapi import FastAPI, Depends, HTTPException
+from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, Engine
+import services  # Tutaj trzymamy logikę z poprzedniej rozmowy (Ollama, Connection Factory)
+import models
+import schemas
+from schemas import ConnectionConfig
+from config import Settings
+from typing import List
+from client import Client
+
+settings = Settings()
 app = FastAPI()
 
+# Dependency do wewnętrznej bazy
+def get_engine():
+    engine = create_engine(f"postgresql://{settings.db_user}:{settings.db_pass}@{settings.db_host}/{settings.db_name}")
+    # Tworzymy tabelę projektów przy starcie
+    models.Base.metadata.create_all(bind=engine)
+    try:
+        yield engine
+    finally:
+        engine.dispose()
 
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
+def get_client():
+    client = Client(url=settings.ollama_url, model=settings.ollama_model, login=settings.ollama_user, password=settings.ollama_pass)
+    try:
+        yield client
+    finally:
+        client = None
 
+# ---------------------------------------------------------
+# 1. Obsługa ProjectsView.vue (Lista projektów)
+# ---------------------------------------------------------
 
-@app.get("/hello/{name}")
-async def say_hello(name: str):
-    return {"message": f"Hello {name}"}
+@app.get("/projects", response_model=List[schemas.ProjectResponse])
+def get_projects(eng: Engine = Depends(get_engine)):
+    # Mapujemy nazwy kolumn z DB na nazwy pól z Vue (db_host -> dbHost)
+    with Session(eng) as session:
+        projects = session.query(models.Project).all()
+    # Pydantic zrobi mapowanie jeśli skonfigurujemy aliasy, ale ręcznie jest czytelniej:
+    return [
+        {
+            "id": p.id,
+            "name": p.name,
+            "description": p.description,
+            "dbType": p.db_type,
+            "dbHost": p.host,
+            "dbPort": p.port,
+            "dbName": p.db_name,
+            "dbUser": p.user,
+            "dbPassword": p.password, # W produkcji nigdy nie zwracaj hasła!
+            "status": p.status
+        } for p in projects
+    ]
+
+# ---------------------------------------------------------
+# 2. Obsługa NewProjectView.vue (Tworzenie)
+# ---------------------------------------------------------
+
+@app.post("/projects/test-connection")
+def test_connection(config: ConnectionConfig):
+    """Sprawdza czy dane wpisane w kreatorze działają."""
+    try:
+        new_engine = services.create_temp_engine(config)
+        with new_engine.connect() as conn:
+            pass # Udało się połączyć
+        return {"status": "success", "message": "Połączono pomyślnie!"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/projects", status_code=201)
+def create_project(project: schemas.ProjectCreate, eng: Engine = Depends(get_engine)):
+    db_project = models.Project(
+        name=project.name,
+        description=project.description,
+        db_type=project.dbType,
+        host=project.dbHost,
+        port=project.dbPort,
+        db_name=project.dbName,
+        user=project.dbUser,
+        password=project.dbPassword, # Pamiętaj o szyfrowaniu!
+        status="active"
+    )
+    with Session(eng) as session:
+        session.add(db_project)
+        session.commit()
+    return
+
+# ---------------------------------------------------------
+# 3. Obsługa ProjectView.vue (Schema Sidebar & Chat)
+# ---------------------------------------------------------
+
+@app.get("/projects/{project_id}/schema")
+def get_project_schema_tree(project_id: int, eng: Engine = Depends(get_engine)):
+    """
+    Zwraca schemat w formacie JSON wymaganym przez PrimeVue Tree.
+    """
+    with Session(eng) as session:
+        project = session.query(models.Project).filter(models.Project.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+    engine = services.get_engine_from_project(project)
+    
+    # Używamy services do pobrania surowych metadanych
+    raw_metadata = services.inspect_schema_structure(engine) 
+    
+    # Transformacja do formatu PrimeVue Tree
+    # key, label, icon, children
+    tree_nodes = []
+    
+    # Zakładamy schemat 'public' dla uproszczenia, można to rozbudować
+    public_node = {
+        "key": "0",
+        "label": "public",
+        "icon": "pi pi-database",
+        "children": []
+    }
+    
+    for idx, (table_name, columns) in enumerate(raw_metadata.items()):
+        table_key = f"0-{idx}"
+        table_node = {
+            "key": table_key,
+            "label": table_name,
+            "icon": "pi pi-table",
+            "children": []
+        }
+        
+        for col_idx, col_def in enumerate(columns):
+            # col_def to np. "id (INTEGER)"
+            col_node = {
+                "key": f"{table_key}-{col_idx}",
+                "label": col_def,
+                "icon": "pi pi-tag",
+                "selectable": False
+            }
+            table_node["children"].append(col_node)
+            
+        public_node["children"].append(table_node)
+        
+    tree_nodes.append(public_node)
+    return {"schema": tree_nodes, "database_type": project.db_type}
+
+@app.post("/projects/{project_id}/ask")
+def ask_assistant(project_id: int, request: schemas.AskRequest, eng: Engine = Depends(get_engine), client = Depends(get_client)):
+    with Session(eng) as session:
+        project = session.query(models.Project).filter(models.Project.id == project_id).first()
+        if not project:
+            raise HTTPException(404, "Project not found")
+        
+    engine = services.get_engine_from_project(project)
+    
+    # 1. Pobierz schemat tekstowy dla Ollamy
+    schema_text = services.get_db_schema(engine)
+    
+    # 2. Wygeneruj SQL
+    generated_sql = services.generate_sql_with_ollama(
+        client,
+        request.question, 
+        schema_text, 
+        project.db_type
+    )
+    
+    return {
+        "sql": generated_sql
+    }
+
+@app.post("/projects/{project_id}/run")
+def run_sql(project_id: int, request: schemas.RunSQLRequest, eng: Engine = Depends(get_engine)):
+    with Session(eng) as session:
+        project = session.query(models.Project).filter(models.Project.id == project_id).first()
+        engine = services.get_engine_from_project(project)
+    
+    try:
+        results = services.execute_query(engine, request.sql)
+        # Pobieramy klucze z pierwszego rzędu, jeśli są
+        columns = list(results[0].keys()) if results else []
+        return {
+            "columns": columns,
+            "data": results
+        }
+    except Exception as e:
+        raise HTTPException(400, detail=f"SQL Error: {str(e)}")
