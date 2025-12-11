@@ -1,9 +1,13 @@
 import { fileURLToPath, URL } from 'node:url'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv} from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
-// https://vite.dev/config/
-export default defineConfig({
+import path from 'node:path'
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+export default defineConfig(({ mode }) => {
+    const env = loadEnv(mode, process.cwd(), '')
+    return {
   plugins: [
     vue(),
     vueDevTools(),
@@ -11,15 +15,16 @@ export default defineConfig({
   server: {
     proxy: {
         '/api': {
-            target: 'http://localhost:8000', // Your backend URL
+            target: env.VITE_API_TARGET, // Your backend URL
             changeOrigin: true,
-            rewrite: (path) => path.replace(/^\/api/, ''), // Optional: remove /api prefix
+            rewrite: (p) => p.replace(/^\/api/, ''), // Optional: remove /api prefix
         }
     }
   },
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
+      '@': path.resolve(__dirname, './src')
     },
   },
-})
+}}
+)
