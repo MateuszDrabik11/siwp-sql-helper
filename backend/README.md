@@ -41,3 +41,8 @@ dane dostępowe do ollamy
 - OLLAMA_USER=lecture #zmienić na nasze jak dostaniemy konta
 - OLLAMA_PASS=siwp
 - OLLAMA_MODEL="gpt-oss:latest" # https://siwp.aei.polsl.pl/models/api/tags
+
+
+
+## config.py
+Pamietajcie zeby sobie w config.py ustawić ścieżke do .env odpowiednio

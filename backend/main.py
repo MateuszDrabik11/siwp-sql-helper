@@ -1,6 +1,6 @@
 import base64
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, Engine
 import services  # Tutaj trzymamy logikę z poprzedniej rozmowy (Ollama, Connection Factory)
@@ -31,6 +31,67 @@ def get_client():
     finally:
         client = None
 
+
+# ---------------------------------------------------------
+# AUTORYZACJA (Rejestracja, Logowanie, Zmiana Hasła)
+# ---------------------------------------------------------
+
+@app.post("/auth/register", status_code=status.HTTP_201_CREATED)
+def register(user_data: schemas.RegisterRequest, eng: Engine = Depends(get_engine)):
+    with Session(eng) as session:
+        # 1. Sprawdź czy użytkownik lub email już istnieje
+        existing_user = session.query(models.User).filter(
+            (models.User.email == user_data.email) | 
+            (models.User.username == user_data.username)
+        ).first()
+        
+        if existing_user:
+            raise HTTPException(
+                status_code=400, 
+                detail="Użytkownik o takim loginie lub emailu już istnieje."
+            )
+
+        # 2. Utwórz użytkownika
+        new_user = models.User(
+            username=user_data.username,
+            email=user_data.email,
+            password=user_data.password # Pamiętaj: w produkcji tu powinno być haszowanie!
+        )
+        
+        session.add(new_user)
+        session.commit()
+        return {"message": "Rejestracja udana"}
+
+@app.post("/auth/login", response_model=schemas.UserResponse)
+def login(creds: schemas.LoginRequest, eng: Engine = Depends(get_engine)):
+    with Session(eng) as session:
+        # Szukamy po username (bo tak loguje się Twój LoginView)
+        user = session.query(models.User).filter(models.User.username == creds.username).first()
+
+        if not user or user.password != creds.password:
+            raise HTTPException(
+                status_code=401, 
+                detail="Błędny login lub hasło"
+            )
+
+        return user
+
+@app.post("/auth/change-password")
+def change_password(data: schemas.ChangePasswordRequest, eng: Engine = Depends(get_engine)):
+    with Session(eng) as session:
+        user = session.query(models.User).filter(models.User.id == data.user_id).first()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="Użytkownik nie znaleziony")
+
+        if user.password != data.old_password:
+            raise HTTPException(status_code=400, detail="Stare hasło jest nieprawidłowe")
+
+        user.password = data.new_password
+        session.commit()
+        
+        return {"message": "Hasło zostało zmienione"}
+    
 # ---------------------------------------------------------
 # 1. Obsługa ProjectsView.vue (Lista projektów)
 # ---------------------------------------------------------

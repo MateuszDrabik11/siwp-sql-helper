@@ -20,3 +20,12 @@ class Project(Base):
     db_name = Column(String)
     
     status = Column(String, default="active") # active, offline
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True) # Z RegisterView
+    email = Column(String, unique=True, index=True)    # Z RegisterView
+    password = Column(String)
