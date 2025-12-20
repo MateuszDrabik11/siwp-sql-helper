@@ -18,14 +18,20 @@ const password = ref('');
 const errorMessage = ref('');
 const loading = ref(false); // Added for button loading state
 
-function handleLogin() {
+async function handleLogin() {
   loading.value = true;
   errorMessage.value = '';
-
+  try {
+    await useUserStore().login(login.value, password.value);
+  }
+  catch (error) {
+    errorMessage.value = 'Invalid username or password';
+    useUserStore().logout();
+    loading.value = false;
+  }
   // Simulate a small network delay for better UX feel
   setTimeout(() => {
-    if (login.value === 'admin' && password.value === 'admin') {
-      useUserStore().testEntry();
+    if (useUserStore().isLoggedIn()) {
       router.push('/home');
     } else {
       errorMessage.value = 'Invalid username or password';
