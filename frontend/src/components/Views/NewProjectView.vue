@@ -14,6 +14,7 @@ import Password from 'primevue/password';
 import Button from 'primevue/button';
 import InputNumber from 'primevue/inputnumber';
 import ExtendedMenu from "@/components/ExtendedMenu.vue";
+import {useUserStore} from "@/Stores/UserStore.js";
 
 const router = useRouter();
 const toast = useToast();
@@ -44,9 +45,9 @@ const form = reactive({
 const dbTypes = ref([
   { name: 'PostgreSQL', code: 'postgres', defaultPort: 5432 },
   { name: 'MySQL', code: 'mysql', defaultPort: 3306 },
-  { name: 'SQL Server', code: 'mssql', defaultPort: 1433 },
-  { name: 'MongoDB', code: 'mongo', defaultPort: 27017 },
-  { name: 'Oracle', code: 'oracle', defaultPort: 1521 }
+  // { name: 'SQL Server', code: 'mssql', defaultPort: 1433 },
+  // { name: 'MongoDB', code: 'mongo', defaultPort: 27017 },
+  // { name: 'Oracle', code: 'oracle', defaultPort: 1521 }
 ]);
 
 // Helper: Auto-fill port when DB type changes
@@ -139,7 +140,8 @@ const handleSubmit = async () => {
     // 1. Method is now POST
     // 2. We add headers to tell the server we are sending JSON
     // 3. We use JSON.stringify() to send the body data
-    const response = await fetch('/api/projects', {
+    let user = useUserStore().getUser.id;
+    const response = await fetch(`/api/projects/${user}`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',

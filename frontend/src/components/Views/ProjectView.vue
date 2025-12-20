@@ -17,6 +17,22 @@ import { useToast } from 'primevue/usetoast';
 const toast = useToast();
 const props = defineProps({ id: [Number, String] });
 const db_type = ref('')
+
+const scrollPanelRef = ref(null);
+
+const scrollToBottom = async () => {
+  await nextTick();
+  // PrimeVue ScrollPanel puts content inside a div with this class
+  const scrollElement = scrollPanelRef.value?.$el.querySelector('.p-scrollpanel-content');
+
+  if (scrollElement) {
+    scrollElement.scrollTo({
+      top: scrollElement.scrollHeight,
+      behavior: 'smooth' // Smooth scrolling for better UX
+    });
+  }
+};
+
 // --- Logic ---
 const schemaNodes = ref([]);
 const expandedKeys = ref({});
@@ -52,12 +68,24 @@ const sendMessage = async () => {
   const text = userQuery.value.trim();
   if (!text) return;
 
-  chatHistory.value.push({
+  // 1. Add user message to local UI
+  const newUserMsg = {
     id: Date.now(),
     role: 'user',
     content: text,
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  });
+  };
+  chatHistory.value.push(newUserMsg);
+
+  // 2. Prepare Context (Last 5 messages)
+  // We take the history BEFORE the new message was pushed, or including it.
+  // Usually, you send the previous history + the current question.
+  const context = chatHistory.value
+      .slice(-6) // Take last 6 (the 5 previous + the 1 we just added)
+      .map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
 
   userQuery.value = '';
   loading.value = true;
@@ -67,7 +95,11 @@ const sendMessage = async () => {
     const response = await fetch(`/api/projects/${props.id}/ask`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ question: text })
+      // 3. Send the history array instead of just a string
+      body: JSON.stringify({
+        question: text,
+        history: context
+      })
     });
 
     if (!response.ok) throw new Error(`Server error: ${response.status}`);
@@ -76,21 +108,14 @@ const sendMessage = async () => {
     chatHistory.value.push({
       id: Date.now() + 1,
       role: 'assistant',
-      content: data.sql ? "Here is the SQL query generated based on your request:" : "I couldn't generate SQL.",
+      content: data.sql ? "Here is the SQL query generated based on your request:" : data.answer || "I couldn't generate SQL.",
       sql: data.sql || null,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       results: null, isRunning: false, runError: null, columns: []
     });
 
   } catch (error) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to get AI response.', life: 3000 });
-    // Push error message to chat for visibility
-    chatHistory.value.push({
-      id: Date.now() + 1,
-      role: 'assistant',
-      content: "Sorry, I encountered an error processing your request.",
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    });
+    // ... error handling
   } finally {
     loading.value = false;
     scrollToBottom();
@@ -141,12 +166,6 @@ const copySQL = (sql) => {
   navigator.clipboard.writeText(sql);
   toast.add({ severity: 'success', summary: 'Copied', detail: 'SQL copied to clipboard', life: 2000 });
 };
-
-const scrollToBottom = async () => {
-  await nextTick();
-  const container = document.querySelector('.p-scrollpanel-content');
-  if (container) container.scrollTop = container.scrollHeight;
-};
 </script>
 
 <template>
@@ -185,7 +204,7 @@ const scrollToBottom = async () => {
       </aside>
 
       <main class="chat-panel">
-        <ScrollPanel class="messages-area custom-scrollbar">
+        <ScrollPanel ref="scrollPanelRef" class="messages-area custom-scrollbar" style="height: 100%">
           <div class="messages-container">
             <div v-for="msg in chatHistory" :key="msg.id" class="message-row fade-in" :class="msg.role">
 
@@ -344,14 +363,15 @@ const scrollToBottom = async () => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  position: relative;
+  height: 100%; /* Ensure it takes full available height */
+  min-height: 0; /* Crucial for flex children to allow scrolling */
+  overflow: hidden; /* Prevents the whole panel from scrolling */
 }
 
 .messages-area {
-  flex: 1;
-  padding: 2rem 1rem;
+  flex: 1; /* This tells the messages to take all space NOT used by the input */
+  min-height: 0; /* Allows the ScrollPanel to be smaller than its content */
 }
-
 .messages-container {
   max-width: 900px;
   margin: 0 auto;
@@ -478,7 +498,12 @@ const scrollToBottom = async () => {
   border-radius: 20px;
   background: #393851;
 }
-
+.input-area-wrapper {
+  flex-shrink: 0; /* Prevents the input area from being squashed */
+  padding: 1rem;
+  background-color: var(--surface-card); /* Optional: different bg to distinguish */
+  border-top: 1px solid var(--surface-border);
+}
 .chat-input {
   flex: 1;
   border: none !important;
