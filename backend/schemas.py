@@ -1,5 +1,7 @@
 from pydantic import BaseModel
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
+
+from datetime import datetime
 
 # --- NewProjectView.vue ---
 class ProjectCreate(BaseModel):
@@ -20,8 +22,13 @@ class ProjectResponse(ProjectCreate):
         from_attributes = True
 
 # --- ProjectView.vue (Czat) ---
+class AskHistory(BaseModel):
+    role: str
+    content: str
+
 class AskRequest(BaseModel):
     question: str
+    history: List[AskHistory] | None = None
 
 class RunSQLRequest(BaseModel):
     sql: str
@@ -38,3 +45,44 @@ class ConnectionConfig(BaseModel):
     username: str
     password: str
     database: str
+
+# Dla RegisterView.vue
+class RegisterRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+    # confirmPassword sprawdzasz na frontendzie, backendu to nie obchodzi
+
+# Dla LoginView.vue
+class LoginRequest(BaseModel):
+    username: str # W Vue zmienna nazywa się 'login', ale wyślemy ją jako 'username'
+    password: str
+
+# Dla NewPasswordView.vue
+class ChangePasswordRequest(BaseModel):
+    user_id: int      # Frontend musi wiedzieć czyje hasło zmieniać (bo nie mamy tokenów)
+    old_password: str # 'currentPassword' w Vue
+    new_password: str # 'newPassword' w Vue
+
+# To co odsyłamy do frontendu po zalogowaniu
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    email: str
+
+    class Config:
+        from_attributes = True
+
+
+class HistoryCreate(BaseModel):
+    question: str
+    generated_sql: str
+
+class HistoryResponse(BaseModel):
+    id: int
+    question: str
+    generated_sql: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

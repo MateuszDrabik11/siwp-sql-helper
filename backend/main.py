@@ -1,6 +1,6 @@
 import base64
-
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi.responses import Response
+from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, Engine
 import services  # Tutaj trzymamy logikę z poprzedniej rozmowy (Ollama, Connection Factory)
@@ -31,15 +31,76 @@ def get_client():
     finally:
         client = None
 
+
+# ---------------------------------------------------------
+# AUTORYZACJA (Rejestracja, Logowanie, Zmiana Hasła)
+# ---------------------------------------------------------
+
+@app.post("/auth/register", status_code=status.HTTP_201_CREATED)
+def register(user_data: schemas.RegisterRequest, eng: Engine = Depends(get_engine)):
+    with Session(eng) as session:
+        # 1. Sprawdź czy użytkownik lub email już istnieje
+        existing_user = session.query(models.User).filter(
+            (models.User.email == user_data.email) | 
+            (models.User.username == user_data.username)
+        ).first()
+        
+        if existing_user:
+            raise HTTPException(
+                status_code=400, 
+                detail="Użytkownik o takim loginie lub emailu już istnieje."
+            )
+
+        # 2. Utwórz użytkownika
+        new_user = models.User(
+            username=user_data.username,
+            email=user_data.email,
+            password=user_data.password # Pamiętaj: w produkcji tu powinno być haszowanie!
+        )
+        
+        session.add(new_user)
+        session.commit()
+        return {"message": "Rejestracja udana"}
+
+@app.post("/auth/login", response_model=schemas.UserResponse)
+def login(creds: schemas.LoginRequest, eng: Engine = Depends(get_engine)):
+    with Session(eng) as session:
+        # Szukamy po username (bo tak loguje się Twój LoginView)
+        user = session.query(models.User).filter(models.User.username == creds.username).first()
+
+        if not user or user.password != creds.password:
+            raise HTTPException(
+                status_code=401, 
+                detail="Błędny login lub hasło"
+            )
+
+        return user
+
+@app.post("/auth/change-password")
+def change_password(data: schemas.ChangePasswordRequest, eng: Engine = Depends(get_engine)):
+    with Session(eng) as session:
+        user = session.query(models.User).filter(models.User.id == data.user_id).first()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="Użytkownik nie znaleziony")
+
+        if user.password != data.old_password:
+            raise HTTPException(status_code=400, detail="Stare hasło jest nieprawidłowe")
+
+        user.password = data.new_password
+        session.commit()
+        
+        return {"message": "Hasło zostało zmienione"}
+    
 # ---------------------------------------------------------
 # 1. Obsługa ProjectsView.vue (Lista projektów)
 # ---------------------------------------------------------
 
-@app.get("/projects", response_model=List[schemas.ProjectResponse])
-def get_projects(eng: Engine = Depends(get_engine)):
+@app.get("/projects/{id}", response_model=List[schemas.ProjectResponse])
+def get_projects(id: int, eng: Engine = Depends(get_engine)):
     # Mapujemy nazwy kolumn z DB na nazwy pól z Vue (db_host -> dbHost)
     with Session(eng) as session:
-        projects = session.query(models.Project).all()
+        projects = session.query(models.User).filter(models.User.id == id).first().projects
     # Pydantic zrobi mapowanie jeśli skonfigurujemy aliasy, ale ręcznie jest czytelniej:
     return [
         {
@@ -71,20 +132,21 @@ def test_connection(config: ConnectionConfig):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.post("/projects", status_code=201)
-def create_project(project: schemas.ProjectCreate, eng: Engine = Depends(get_engine)):
-    db_project = models.Project(
-        name=project.name,
-        description=project.description,
-        db_type=project.dbType,
-        host=project.dbHost,
-        port=project.dbPort,
-        db_name=project.dbName,
-        user=project.dbUser,
-        password=project.dbPassword, # Pamiętaj o szyfrowaniu!
-        status="active"
-    )
+@app.post("/projects/{id}", status_code=201)
+def create_project(id: int, project: schemas.ProjectCreate, eng: Engine = Depends(get_engine)):
     with Session(eng) as session:
+        db_project = models.Project(
+            name=project.name,
+            description=project.description,
+            db_type=project.dbType,
+            host=project.dbHost,
+            port=project.dbPort,
+            db_name=project.dbName,
+            user=project.dbUser,
+            password=project.dbPassword,  # Pamiętaj o szyfrowaniu!
+            status="active",
+            owner_id=id,
+        )
         session.add(db_project)
         session.commit()
     return
@@ -155,18 +217,32 @@ def ask_assistant(project_id: int, request: schemas.AskRequest, eng: Engine = De
     
     # 1. Pobierz schemat tekstowy dla Ollamy
     schema_text = services.get_db_schema(engine)
-    
+    history = request.history if request.history else None
     # 2. Wygeneruj SQL
     generated_sql = services.generate_sql_with_ollama(
         client,
-        request.question, 
+        request.question,
         schema_text, 
-        project.db_type
+        project.db_type,
+        history=history
     )
     
+    # Tworzymy wpis w historii
+    new_history = models.SQLHistory(
+         project_id=project_id,
+         question=request.question,
+         generated_sql=generated_sql
+    )
+
+    session.add(new_history)
+    session.commit()
+
     return {
         "sql": generated_sql
     }
+        
+       
+
 
 @app.post("/projects/{project_id}/run")
 def run_sql(project_id: int, request: schemas.RunSQLRequest, eng: Engine = Depends(get_engine)):
@@ -184,3 +260,49 @@ def run_sql(project_id: int, request: schemas.RunSQLRequest, eng: Engine = Depen
         }
     except Exception as e:
         raise HTTPException(400, detail=f"SQL Error: {str(e)}")
+
+
+#do testow, sam w sobie jest zbedny
+@app.post("/projects/{project_id}/history")
+def save_history(project_id: int, history: schemas.HistoryCreate, eng: Engine = Depends(get_engine)):
+    with Session(eng) as session:
+        # Sprawdzamy czy projekt istnieje
+        project = session.query(models.Project).filter(models.Project.id == project_id).first()
+        if not project:
+            raise HTTPException(404, "Project not found")
+
+        # Tworzymy wpis w historii
+        new_entry = models.SQLHistory(
+            project_id=project_id,
+            question=history.question,
+            generated_sql=history.generated_sql
+        )
+        
+        session.add(new_entry)
+        session.commit()
+        
+        return {"status": "saved", "id": new_entry.id}
+
+
+@app.get("/projects/{project_id}/history", response_model=List[schemas.HistoryResponse])
+def get_project_history(project_id: int, eng: Engine = Depends(get_engine)):
+    with Session(eng) as session:
+
+        project = session.query(models.Project).filter(models.Project.id == project_id).first()
+        if not project:
+            raise HTTPException(404, "Project not found")
+
+        history = session.query(models.SQLHistory)\
+            .filter(models.SQLHistory.project_id == project_id)\
+            .order_by(models.SQLHistory.created_at.asc())\
+            .all()
+            
+        return history
+
+
+@app.delete("/projects/{project_id}")
+def delete_project(project_id: int, eng: Engine = Depends(get_engine)):
+    with Session(eng) as session:
+        session.query(models.Project).filter(models.Project.id == project_id).delete()
+        session.commit()
+        return Response(status_code=200)

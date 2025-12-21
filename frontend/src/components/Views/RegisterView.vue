@@ -10,6 +10,7 @@ import Button from 'primevue/button';
 import Card from 'primevue/card';
 import Message from 'primevue/message';
 import FloatLabel from 'primevue/floatlabel';
+import axios from "axios";
 
 const router = useRouter();
 
@@ -26,7 +27,7 @@ function handleRegister() {
   errorMessage.value = '';
 
   // Simulate network request
-  setTimeout(() => {
+  setTimeout(async () => {
     if (!username.value || !email.value || !password.value || !confirmPassword.value) {
       errorMessage.value = 'All fields are required';
       loading.value = false;
@@ -39,7 +40,12 @@ function handleRegister() {
       return;
     }
 
-    // Success Simulation
+    try {
+      const res = await axios.post('/api/auth/register', {'username': username.value, 'email': email.value, 'password': password.value});
+    } catch (error) {
+      console.error("Login failed:", error);
+      throw error;
+    }
     alert(`User ${username.value} registered successfully!`);
 
     // Reset

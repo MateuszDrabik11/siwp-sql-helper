@@ -2,12 +2,12 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
-
 // Components (Make sure these are registered globally or import them)
 import Card from 'primevue/card';
 import Button from 'primevue/button';
 import Password from 'primevue/password';
 import Toast from 'primevue/toast';
+import {useUserStore} from "@/Stores/UserStore.js";
 
 const router = useRouter();
 const toast = useToast();
@@ -17,8 +17,10 @@ const newPassword = ref('');
 const confirmPassword = ref('');
 const isLoading = ref(false);
 
+const userStore = useUserStore();
+
 const handleSubmit = async () => {
-  // 1. Basic Validation
+  // 1. Validation
   if (!currentPassword.value || !newPassword.value || !confirmPassword.value) {
     toast.add({ severity: 'warn', summary: 'Missing Data', detail: 'Please fill in all fields.', life: 3000 });
     return;
@@ -29,25 +31,40 @@ const handleSubmit = async () => {
     return;
   }
 
-  // 2. Mock API Call
+  // 2. Real API Integration
   isLoading.value = true;
 
-  // Simulate network delay (Replace this with your actual axios/fetch call)
-  setTimeout(() => {
-    isLoading.value = false;
+  try {
+    await userStore.changePassword(currentPassword.value, newPassword.value);
 
-    // Success scenario
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Password updated successfully', life: 3000 });
+    // Success
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Password updated successfully',
+      life: 3000
+    });
 
-    // Optional: Reset form or redirect
+    // Reset form
     currentPassword.value = '';
     newPassword.value = '';
     confirmPassword.value = '';
 
-    // Redirect back to dashboard after a short delay?
-    // setTimeout(() => router.push('/home'), 1000);
+    // Optional: Redirect home
+    setTimeout(() => router.push('/home'), 1500);
 
-  }, 1500);
+  } catch (error) {
+    // 3. Error Handling
+    const msg = error.response?.data?.detail || "Failed to update password. Please try again.";
+    toast.add({
+      severity: 'error',
+      summary: 'Update Failed',
+      detail: msg,
+      life: 5000
+    });
+  } finally {
+    isLoading.value = false;
+  }
 };
 
 const handleCancel = () => {

@@ -30,7 +30,7 @@ def get_db_schema(engine) -> str:
         
     return "\n".join(schema_info)
 
-def generate_sql_with_ollama(client: Client, question: str, schema: str, db_type: str) -> str:
+def generate_sql_with_ollama(client: Client, question: str, schema: str, db_type: str, history: str | None = None) -> str:
     """Wysyła prompt do Ollamy i zwraca czysty SQL."""
     
     system_prompt = f"""
@@ -48,10 +48,16 @@ def generate_sql_with_ollama(client: Client, question: str, schema: str, db_type
     """
     settings = Settings()
     # Pamiętaj, żeby mieć uruchomione 'ollama serve' w tle
-    response = client.chat(messages=[
-        {'role': 'system', 'content': system_prompt},
-        {'role': 'user', 'content': question},
-    ])
+    messages = [{"role": "system", "content": system_prompt}]
+
+    # 3. Add History (Last 5 messages)
+    if history:
+        for msg in history:
+            messages.append({"role": msg.role, "content": msg.content})
+
+    # 4. Add the current question
+    messages.append({"role": "user", "content": question})
+    response = client.chat(messages=messages)
     
     # Oczyszczanie wyniku (modele lubią dodawać ```sql na początku)
     sql = response['message']['content']
