@@ -5,6 +5,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - 8000:8000
+    networks:
+      - sql-network
     environment:
       DB_USER: $DB_USER
       DB_PASS: $DB_PASS
@@ -21,6 +23,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - 80:80
+    networks:
+      - sql-network
     environment:
       VITE_API_TARGET: $VITE_API_TARGET
 
@@ -30,8 +34,13 @@ services:
       POSTGRES_USER: $DB_USER
       POSTGRES_PASSWORD: $DB_PASS
       POSTGRES_DB: $DB_NAME
+    networks:
+      - sql-network
     volumes:
       - postgres_vol:/var/lib/postgresql
+
+networks:
+  sql-network:
 
 volumes:
   postgres_vol:
