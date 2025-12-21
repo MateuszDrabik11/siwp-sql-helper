@@ -41,6 +41,7 @@ services:
 
 networks:
   sql-network:
+    name: sql-network
 
 volumes:
   postgres_vol:
