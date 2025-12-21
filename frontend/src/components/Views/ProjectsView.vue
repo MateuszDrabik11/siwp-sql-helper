@@ -8,6 +8,7 @@ import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Dropdown from 'primevue/dropdown';
 import ExtendedMenu from "@/components/ExtendedMenu.vue";
+import {useUserStore} from "@/Stores/UserStore.js";
 
 const router = useRouter();
 const layout = ref('grid');
@@ -27,7 +28,8 @@ const statusOptions = [
 const getProjects = async () => {
   try {
     // Replace with your actual backend endpoint
-    const response = await fetch('/api/projects');
+    let user = useUserStore().getUser.id;
+    const response = await fetch(`/api/projects/${user}`);
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);

@@ -24,7 +24,8 @@ let projects = ref([
 const getProjects = async () => {
   try {
     // Replace with your actual backend endpoint
-    const response = await fetch('/api/projects');
+    let user = userStore.getUser.id;
+    const response = await fetch(`/api/projects/${user}`);
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);

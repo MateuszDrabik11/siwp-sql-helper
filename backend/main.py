@@ -96,11 +96,11 @@ def change_password(data: schemas.ChangePasswordRequest, eng: Engine = Depends(g
 # 1. Obsługa ProjectsView.vue (Lista projektów)
 # ---------------------------------------------------------
 
-@app.get("/projects", response_model=List[schemas.ProjectResponse])
-def get_projects(eng: Engine = Depends(get_engine)):
+@app.get("/projects/{id}", response_model=List[schemas.ProjectResponse])
+def get_projects(id: int, eng: Engine = Depends(get_engine)):
     # Mapujemy nazwy kolumn z DB na nazwy pól z Vue (db_host -> dbHost)
     with Session(eng) as session:
-        projects = session.query(models.Project).all()
+        projects = session.query(models.User).filter(models.User.id == id).first().projects
     # Pydantic zrobi mapowanie jeśli skonfigurujemy aliasy, ale ręcznie jest czytelniej:
     return [
         {
@@ -132,20 +132,21 @@ def test_connection(config: ConnectionConfig):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.post("/projects", status_code=201)
-def create_project(project: schemas.ProjectCreate, eng: Engine = Depends(get_engine)):
-    db_project = models.Project(
-        name=project.name,
-        description=project.description,
-        db_type=project.dbType,
-        host=project.dbHost,
-        port=project.dbPort,
-        db_name=project.dbName,
-        user=project.dbUser,
-        password=project.dbPassword, # Pamiętaj o szyfrowaniu!
-        status="active"
-    )
+@app.post("/projects/{id}", status_code=201)
+def create_project(id: int, project: schemas.ProjectCreate, eng: Engine = Depends(get_engine)):
     with Session(eng) as session:
+        db_project = models.Project(
+            name=project.name,
+            description=project.description,
+            db_type=project.dbType,
+            host=project.dbHost,
+            port=project.dbPort,
+            db_name=project.dbName,
+            user=project.dbUser,
+            password=project.dbPassword,  # Pamiętaj o szyfrowaniu!
+            status="active",
+            owner_id=id,
+        )
         session.add(db_project)
         session.commit()
     return
@@ -216,13 +217,14 @@ def ask_assistant(project_id: int, request: schemas.AskRequest, eng: Engine = De
     
     # 1. Pobierz schemat tekstowy dla Ollamy
     schema_text = services.get_db_schema(engine)
-    
+    history = request.history if request.history else None
     # 2. Wygeneruj SQL
     generated_sql = services.generate_sql_with_ollama(
         client,
-        request.question, 
+        request.question,
         schema_text, 
-        project.db_type
+        project.db_type,
+        history=history
     )
     
     # Tworzymy wpis w historii

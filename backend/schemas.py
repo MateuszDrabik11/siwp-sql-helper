@@ -1,5 +1,6 @@
 from pydantic import BaseModel
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
+
 from datetime import datetime
 
 # --- NewProjectView.vue ---
@@ -21,8 +22,13 @@ class ProjectResponse(ProjectCreate):
         from_attributes = True
 
 # --- ProjectView.vue (Czat) ---
+class AskHistory(BaseModel):
+    role: str
+    content: str
+
 class AskRequest(BaseModel):
     question: str
+    history: List[AskHistory] | None = None
 
 class RunSQLRequest(BaseModel):
     sql: str
