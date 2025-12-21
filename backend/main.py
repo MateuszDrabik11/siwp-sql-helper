@@ -1,5 +1,5 @@
 import base64
-
+from fastapi.responses import Response
 from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, Engine
@@ -298,3 +298,11 @@ def get_project_history(project_id: int, eng: Engine = Depends(get_engine)):
             .all()
             
         return history
+
+
+@app.delete("/projects/{project_id}")
+def delete_project(project_id: int, eng: Engine = Depends(get_engine)):
+    with Session(eng) as session:
+        session.query(models.Project).filter(models.Project.id == project_id).delete()
+        session.commit()
+        return Response(status_code=200)

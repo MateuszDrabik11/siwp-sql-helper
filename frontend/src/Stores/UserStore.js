@@ -5,6 +5,7 @@ export const useUserStore = defineStore('userStore', {
     state: () => ({
         user: null, //Object
     }),
+    persist: true,
     getters: {
         getUser(state) {
             return state.user;

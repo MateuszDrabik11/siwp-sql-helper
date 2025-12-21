@@ -1,6 +1,6 @@
 <script setup>
 import ExtendedMenu from "@/components/ExtendedMenu.vue";
-import { ref, onMounted, nextTick } from "vue";
+import { ref, onMounted, nextTick, watch } from "vue";
 import Tree from 'primevue/tree';
 import Button from 'primevue/button';
 import ScrollPanel from 'primevue/scrollpanel';
@@ -61,8 +61,6 @@ const getSchema = async () => {
     console.error('Failed to fetch schema:', error);
   }
 };
-
-onMounted(() => getSchema());
 
 const sendMessage = async () => {
   const text = userQuery.value.trim();
@@ -161,7 +159,56 @@ const runQuery = async (message) => {
   }
 };
 
-// Simple copy to clipboard function
+const getHistory = async () => {
+  try {
+    const response = await fetch(`/api/projects/${props.id}/history`);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const historyData = await response.json();
+
+    // Map the database rows to the chat history format
+    const formattedHistory = [];
+    historyData.forEach(item => {
+      // 1. Add the User's question
+      formattedHistory.push({
+        id: `old-u-${item.id}`,
+        role: 'user',
+        content: item.question,
+        timestamp: new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+
+      // 2. Add the Assistant's SQL response
+      formattedHistory.push({
+        id: `old-a-${item.id}`,
+        role: 'assistant',
+        content: "Here is the SQL query generated based on your request:",
+        sql: item.generated_sql,
+        timestamp: new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        results: null,
+        isRunning: false,
+        runError: null,
+        columns: []
+      });
+    });
+
+    chatHistory.value = formattedHistory;
+
+    // Scroll to the bottom after loading history
+    await nextTick();
+    scrollToBottom();
+  } catch (error) {
+    console.error('Failed to fetch history:', error);
+    toast.add({ severity: 'warn', summary: 'History', detail: 'Could not load previous chat history.', life: 3000 });
+  }
+};
+watch(chatHistory, () => {
+  scrollToBottom();
+}, { deep: true })
+// Update onMounted to run both
+onMounted(() => {
+  getSchema();
+  getHistory();
+});
+
 const copySQL = (sql) => {
   navigator.clipboard.writeText(sql);
   toast.add({ severity: 'success', summary: 'Copied', detail: 'SQL copied to clipboard', life: 2000 });
@@ -206,6 +253,10 @@ const copySQL = (sql) => {
       <main class="chat-panel">
         <ScrollPanel ref="scrollPanelRef" class="messages-area custom-scrollbar" style="height: 100%">
           <div class="messages-container">
+            <div v-if="chatHistory.length === 0 && !loading" class="text-center p-5 text-500">
+              <i class="pi pi-comments text-4xl mb-3"></i>
+              <p>No previous conversation. Start by asking a question!</p>
+            </div>
             <div v-for="msg in chatHistory" :key="msg.id" class="message-row fade-in" :class="msg.role">
 
               <div class="message-content-wrapper">

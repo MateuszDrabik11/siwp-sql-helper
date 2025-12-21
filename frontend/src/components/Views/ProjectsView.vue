@@ -86,6 +86,19 @@ const openProject = (id) => {
   router.push(`/project/${id}`);
 };
 
+const deleteProject = async (id) =>  {
+  try {
+    const response = await fetch(`/api/projects/${id}`, {method: 'DELETE'});
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    await getProjects();
+  } catch (error) {
+    console.error('Failed to delete project:', error);
+  }
+};
+
 const createNew = () => {
   router.push('/new_project');
 };
@@ -145,8 +158,7 @@ const createNew = () => {
               </div>
 
               <div class="card-footer">
-                <span class="timestamp"><i class="pi pi-clock"></i> {{ item.lastAccessed }}</span>
-                <Button icon="pi pi-arrow-right" rounded text severity="secondary" class="action-btn" />
+                <Button icon="pi pi-times" rounded text severity="danger" class="action-btn" @click.stop="deleteProject(item.id)"/>
               </div>
 
             </div>
@@ -170,7 +182,6 @@ const createNew = () => {
             <div class="list-meta">
               <span class="host-info"><i class="pi pi-server"></i> {{ item.host }}</span>
               <Tag :value="item.status" :severity="getSeverity(item.status)" />
-              <Button icon="pi pi-chevron-right" text rounded severity="secondary" />
             </div>
 
           </div>
@@ -322,7 +333,11 @@ const createNew = () => {
 
 .card-footer {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
+  padding: 0.5rem;
+  position: absolute; /* Keeps it in the corner regardless of description length */
+  bottom: 0;
+  right: 0;
   align-items: center;
   border-top: 1px solid var(--surface-border);
   padding-top: 1rem;
@@ -389,7 +404,17 @@ const createNew = () => {
 .icon-green { color: #22c55e; }
 .icon-red { color: #ef4444; }
 .icon-dark-red { color: #b91c1c; }
+.action-btn {
+  width: 2.5rem !important;
+  height: 2.5rem !important;
+  transition: transform 0.2s ease, background-color 0.2s ease;
+  z-index: 10; /* Ensures it stays above the card click area */
+}
 
+.action-btn:hover {
+  transform: scale(1.1);
+  background-color: rgba(239, 68, 68, 0.1) !important; /* Subtle red glow on hover */
+}
 /* 8. Mobile Responsiveness */
 @media (max-width: 768px) {
   .list-item {

@@ -16,6 +16,7 @@ import {useUserStore} from "@/Stores/UserStore.js";
 import Logout from "@/components/Logout.vue";
 import ToastService from 'primevue/toastservice';
 import ProjectsView from "@/components/Views/ProjectsView.vue";
+import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
 const AuthGuard = (to, from) => {
     return useUserStore().isLoggedIn();
 }
@@ -38,6 +39,7 @@ export const router = createRouter({
     routes,
 });
 const pinia = createPinia();
+pinia.use(piniaPluginPersistedstate)
 const app = createApp(App);
 app.use(PrimeVue, {
     theme: {

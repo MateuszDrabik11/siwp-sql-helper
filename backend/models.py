@@ -23,7 +23,7 @@ class Project(Base):
     owner_id = Column(Integer, ForeignKey("users.id"))
     # Relationship back to User
     owner = relationship("User", back_populates="projects")
-
+    history = relationship("SQLHistory", back_populates="project", cascade="all, delete-orphan")
 
 class User(Base):
     __tablename__ = "users"
@@ -39,6 +39,7 @@ class SQLHistory(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"))
+    project = relationship("Project", back_populates="history")
     question = Column(String)
     generated_sql = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
