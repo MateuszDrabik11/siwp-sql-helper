@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, Text
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
 from sqlalchemy.orm import  declarative_base
+from datetime import datetime
 
 Base = declarative_base()
 
@@ -29,3 +30,13 @@ class User(Base):
     username = Column(String, unique=True, index=True) # Z RegisterView
     email = Column(String, unique=True, index=True)    # Z RegisterView
     password = Column(String)
+
+
+class SQLHistory(Base):
+    __tablename__ = "sql_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    question = Column(String)
+    generated_sql = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)

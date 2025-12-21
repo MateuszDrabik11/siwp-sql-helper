@@ -225,9 +225,22 @@ def ask_assistant(project_id: int, request: schemas.AskRequest, eng: Engine = De
         project.db_type
     )
     
+    # Tworzymy wpis w historii
+    new_history = models.SQLHistory(
+         project_id=project_id,
+         question=request.question,
+         generated_sql=generated_sql
+    )
+
+    session.add(new_history)
+    session.commit()
+
     return {
         "sql": generated_sql
     }
+        
+       
+
 
 @app.post("/projects/{project_id}/run")
 def run_sql(project_id: int, request: schemas.RunSQLRequest, eng: Engine = Depends(get_engine)):
@@ -245,3 +258,41 @@ def run_sql(project_id: int, request: schemas.RunSQLRequest, eng: Engine = Depen
         }
     except Exception as e:
         raise HTTPException(400, detail=f"SQL Error: {str(e)}")
+
+
+#do testow, sam w sobie jest zbedny
+@app.post("/projects/{project_id}/history")
+def save_history(project_id: int, history: schemas.HistoryCreate, eng: Engine = Depends(get_engine)):
+    with Session(eng) as session:
+        # Sprawdzamy czy projekt istnieje
+        project = session.query(models.Project).filter(models.Project.id == project_id).first()
+        if not project:
+            raise HTTPException(404, "Project not found")
+
+        # Tworzymy wpis w historii
+        new_entry = models.SQLHistory(
+            project_id=project_id,
+            question=history.question,
+            generated_sql=history.generated_sql
+        )
+        
+        session.add(new_entry)
+        session.commit()
+        
+        return {"status": "saved", "id": new_entry.id}
+
+
+@app.get("/projects/{project_id}/history", response_model=List[schemas.HistoryResponse])
+def get_project_history(project_id: int, eng: Engine = Depends(get_engine)):
+    with Session(eng) as session:
+
+        project = session.query(models.Project).filter(models.Project.id == project_id).first()
+        if not project:
+            raise HTTPException(404, "Project not found")
+
+        history = session.query(models.SQLHistory)\
+            .filter(models.SQLHistory.project_id == project_id)\
+            .order_by(models.SQLHistory.created_at.asc())\
+            .all()
+            
+        return history

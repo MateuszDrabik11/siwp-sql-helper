@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional, List, Any
+from datetime import datetime
 
 # --- NewProjectView.vue ---
 class ProjectCreate(BaseModel):
@@ -62,6 +63,20 @@ class UserResponse(BaseModel):
     id: int
     username: str
     email: str
+
+    class Config:
+        from_attributes = True
+
+
+class HistoryCreate(BaseModel):
+    question: str
+    generated_sql: str
+
+class HistoryResponse(BaseModel):
+    id: int
+    question: str
+    generated_sql: str
+    created_at: datetime
 
     class Config:
         from_attributes = True
